@@ -82,11 +82,13 @@
 
               perPage = lib.mkOption {
                 type = lib.types.ints.between 1 96;
-                default = 40;
+                default = 96;
                 description = ''
-                  Results fetched per poll. Only the first page is read, so this
-                  must comfortably exceed how many new listings can appear
-                  between two polls.
+                  Results fetched per poll, capped at Vinted's maximum. Vinted
+                  answers each request with a different sample of the matching
+                  pool rather than a stable newest-first page, so a larger
+                  sample is a straight improvement: it raises the chance that a
+                  genuinely new listing is caught on any given poll.
                 '';
               };
 

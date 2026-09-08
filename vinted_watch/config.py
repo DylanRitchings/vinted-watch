@@ -77,7 +77,7 @@ def _parse_watch(name: str, spec: dict[str, Any]) -> Watch:
         # `query` still searches for something rather than the whole catalogue.
         "search_text": _get(spec, "query") or name,
         "order": _get(spec, "order", "newest_first"),
-        "per_page": _get(spec, "perPage", 40),
+        "per_page": _get(spec, "perPage", 96),
         "price_from": _get(spec, "minPrice"),
         "price_to": _get(spec, "maxPrice"),
         "currency": _get(spec, "currency"),

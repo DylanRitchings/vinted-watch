@@ -32,24 +32,22 @@ def run_watch(
 ) -> int:
     """Poll one watch. Returns the number of notifications sent."""
     raw_items = client.search(watch.params)
-    matches = [
-        item
-        for item in (Listing.from_api(entry) for entry in raw_items)
-        if watch.filters.matches(item)
-    ]
+    listings = [Listing.from_api(entry) for entry in raw_items]
+    matches = [item for item in listings if watch.filters.matches(item)]
 
     store = SeenStore(state_dir, watch.name)
     # First ever run (or an explicit reseed) records the current results
     # silently. Without this, enabling a watch dumps 40 notifications at once.
-    seeding = reseed or not store.existed
+    seeding = reseed or not store.usable
     fresh = [item for item in matches if store.is_new(item.id)]
 
     log.info(
-        "%s: %d results, %d match filters, %d new%s",
+        "%s: %d results, %d match filters, %d above id %d%s",
         watch.name,
         len(raw_items),
         len(matches),
         len(fresh),
+        store.high_water,
         " (seeding, not notifying)" if seeding else "",
     )
 
@@ -70,8 +68,12 @@ def run_watch(
             sent += 1
 
     if not dry_run:
-        # Only matching items are recorded. Anything filtered out stays
-        # unrecorded on purpose, so a later price drop still alerts.
+        # The high water mark tracks every id the search returned, matching or
+        # not: it is a statement about time, and ids are handed out in order.
+        store.observe(item.id for item in listings)
+        # Only matching items are recorded as notified. Anything filtered out
+        # stays unrecorded on purpose, so a later price drop still alerts --
+        # provided the listing is still above the mark.
         store.record(item.id for item in matches)
         store.save()
 

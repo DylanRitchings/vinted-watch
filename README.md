@@ -7,7 +7,8 @@ config instead of clicked into a web UI.
 - **Stdlib-only Python.** No `requests`, no headless browser, no Docker.
 - **Systemd oneshot + timer.** Nothing is running between polls.
 - **Quiet by default.** A new watch seeds silently on its first poll, so
-  enabling one does not dump 40 notifications on your phone.
+  enabling one does not dump 96 notifications on your phone — and Vinted's
+  churning result pool is filtered out rather than notified about (see below).
 - **Fee-aware price filters.** Price bounds compare against the total the buyer
   actually pays, not the headline item price.
 
@@ -66,7 +67,7 @@ poll interval sane (minutes, not seconds).
 | Option | Default | Notes |
 | --- | --- | --- |
 | `interval` | `5m` | systemd time span. Below a couple of minutes invites 429s. |
-| `perPage` | `40` | Only the first page is read — must exceed the new listings per interval. |
+| `perPage` | `96` | Vinted's maximum. A bigger sample means new listings are caught sooner. |
 | `maxNotificationsPerRun` | `10` | Excess listings are recorded as seen, so no backlog builds up. |
 | `priceIncludesFees` | `true` | Compare bounds against the fee-inclusive checkout total. |
 | `ntfy.tokenFile` | `null` | Passed via systemd credentials; never enters the Nix store. |
@@ -76,8 +77,30 @@ poll interval sane (minutes, not seconds).
 own labels; `titleInclude` / `titleExclude` are case-insensitive substring
 matches against the title and brand.
 
-Listings that fail a filter are deliberately **not** recorded as seen, so an
-item that later drops under `maxPrice` still notifies.
+## How new listings are identified
+
+Vinted's catalog endpoint ignores the `order` parameter. Every request answers
+with a *different sample* of the fuzzily-matched result pool: two polls seconds
+apart typically share only about half their ids, and paging through does not
+converge on a stable set either. Measured on a real query, a plain seen-set
+treats 14–24 listings per poll as "new", most of them months old.
+
+So a listing counts as new only when its id is **above the highest id ever
+observed** for that watch, matching or not. Vinted allocates ids in ascending
+order, so anything genuinely new clears the mark and the churn below it stays
+quiet. On the same query that produced 14–24 false positives per poll, this
+leaves 0–1.
+
+The mark only advances when a larger id is actually observed, so a new listing
+that one poll's sample happens to miss stays notifiable on later polls.
+
+Two consequences worth knowing:
+
+- A **price drop on an existing listing does not notify** — its id is below the
+  mark. This tool watches for new listings, not for repricing.
+- Widening a query (raising `maxPrice`, dropping a filter) will **not** surface
+  matching listings that already existed. Run `--reseed` if you want the new
+  baseline recorded silently, or delete that watch's state file to start over.
 
 ## Tuning a query
 

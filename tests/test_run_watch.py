@@ -93,16 +93,56 @@ def test_cap_limits_notifications_but_still_records_them(tmp_path):
     assert notifier.sent == []
 
 
-def test_filtered_out_listings_still_alert_after_a_price_drop(tmp_path):
-    notifier = FakeNotifier()
-    filters = {"max_price": 30}
-    run([item(1, amount="10.00")], tmp_path, notifier, filters=filters)
+def test_churned_in_old_listings_are_not_notified(tmp_path):
+    """Vinted resamples its result pool every request, surfacing old listings.
 
-    run([item(2, amount="99.00")], tmp_path, notifier, filters=filters)
+    Those must stay quiet: they are below the high water mark even though this
+    watch has never notified about them.
+    """
+    notifier = FakeNotifier()
+    run([item(500), item(400)], tmp_path, notifier)
+
+    assert run([item(300), item(200), item(100)], tmp_path, notifier) == 0
     assert notifier.sent == []
 
-    run([item(2, amount="25.00")], tmp_path, notifier, filters=filters)
-    assert [i.id for i in notifier.sent] == [2]
+
+def test_a_missed_new_listing_stays_notifiable(tmp_path):
+    """The mark only advances on ids actually observed, so nothing is lost
+    just because one poll's sample happened to omit it."""
+    notifier = FakeNotifier()
+    run([item(100)], tmp_path, notifier)
+
+    run([item(50)], tmp_path, notifier)  # sample missed 200 entirely
+    assert notifier.sent == []
+
+    run([item(200), item(50)], tmp_path, notifier)
+    assert [i.id for i in notifier.sent] == [200]
+
+
+def test_price_drops_below_the_mark_do_not_alert(tmp_path):
+    """Deliberate trade-off: suppressing the churn also suppresses price drops
+    on listings older than the high water mark."""
+    notifier = FakeNotifier()
+    filters = {"max_price": 30}
+    run([item(100, amount="10.00")], tmp_path, notifier, filters=filters)
+
+    run([item(50, amount="99.00")], tmp_path, notifier, filters=filters)
+    run([item(50, amount="25.00")], tmp_path, notifier, filters=filters)
+    assert notifier.sent == []
+
+
+def test_high_water_covers_listings_that_failed_the_filters(tmp_path):
+    """A non-matching listing still proves ids up to its own existed."""
+    notifier = FakeNotifier()
+    filters = {"max_price": 30}
+    run([item(100, amount="10.00")], tmp_path, notifier, filters=filters)
+
+    # 200 is too expensive to notify about, but it moves the mark.
+    run([item(200, amount="99.00")], tmp_path, notifier, filters=filters)
+    assert notifier.sent == []
+
+    run([item(150, amount="10.00")], tmp_path, notifier, filters=filters)
+    assert notifier.sent == []
 
 
 def test_reseed_records_without_notifying(tmp_path):
