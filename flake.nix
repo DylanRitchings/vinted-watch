@@ -137,6 +137,63 @@
                 description = "Drop listings whose title or brand contains any of these.";
               };
 
+              requireQueryInTitle = lib.mkOption {
+                type = lib.types.bool;
+                default = true;
+                description = ''
+                  Require every word of {option}`query` to appear in the
+                  listing's title or brand.
+
+                  Vinted treats a multi-word search as "any of these words", so
+                  a search for "herringbone navy blanket" comes back mostly
+                  plain blankets — measured at roughly one result in ten
+                  actually containing all three words. Turn this off to see
+                  everything Vinted considers related.
+                '';
+              };
+
+              titleAll = lib.mkOption {
+                type = lib.types.listOf lib.types.str;
+                default = [ ];
+                example = [ "wool" ];
+                description = ''
+                  Extra words that must *all* appear in the title or brand, on
+                  top of whatever {option}`requireQueryInTitle` requires.
+                '';
+              };
+
+              digest = lib.mkOption {
+                type = lib.types.bool;
+                default = false;
+                description = ''
+                  Send one notification listing every new match from a poll,
+                  instead of one notification each. A poll that finds a single
+                  listing still uses the per-listing format, which carries the
+                  photo and opens the listing when tapped.
+                '';
+              };
+
+              ignoreIds = lib.mkOption {
+                type = lib.types.listOf lib.types.int;
+                default = [ ];
+                example = [ 9929551660 ];
+                description = ''
+                  Listing IDs never to notify about, on top of the global
+                  {option}`services.vinted-watch.ignoreIds`. The id is the
+                  number in the listing's URL.
+                '';
+              };
+
+              ignoreSellers = lib.mkOption {
+                type = lib.types.listOf lib.types.str;
+                default = [ ];
+                description = ''
+                  Seller usernames never to notify about, on top of the global
+                  {option}`services.vinted-watch.ignoreSellers`. The username
+                  appears in every notification.
+                '';
+              };
+
               brands = lib.mkOption {
                 type = lib.types.listOf lib.types.str;
                 default = [ ];
@@ -176,7 +233,7 @@
           };
 
           settings = {
-            inherit (cfg) domain maxNotificationsPerRun;
+            inherit (cfg) domain maxNotificationsPerRun ignoreIds ignoreSellers;
             userAgent = cfg.userAgent;
             stateDir = cfg.stateDir;
             notifier = {
@@ -188,7 +245,8 @@
             watches = lib.mapAttrs (_: watch: {
               inherit (watch)
                 enable query order perPage minPrice maxPrice priceIncludesFees
-                currency titleInclude titleExclude brands sizes conditions
+                currency titleInclude titleExclude titleAll requireQueryInTitle
+                digest ignoreIds ignoreSellers brands sizes conditions
                 extraParams;
             }) cfg.watches;
           };
@@ -250,6 +308,27 @@
               description = ''
                 Cap on notifications per watch per poll. Excess listings are
                 still recorded as seen, so a busy search cannot flood the phone.
+              '';
+            };
+
+            ignoreIds = lib.mkOption {
+              type = lib.types.listOf lib.types.int;
+              default = [ ];
+              example = [ 9929551660 ];
+              description = ''
+                Listing IDs never to notify about, across every watch. The id
+                is the number in the listing's URL.
+              '';
+            };
+
+            ignoreSellers = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [ ];
+              example = [ "bulkshop123" ];
+              description = ''
+                Seller usernames never to notify about, across every watch.
+                The username appears in every notification, so blocklisting a
+                shop that floods your results is a copy-paste.
               '';
             };
 

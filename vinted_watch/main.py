@@ -29,15 +29,28 @@ def run_watch(
     max_notifications: int,
     dry_run: bool,
     reseed: bool,
+    already_notified: set[int] | None = None,
 ) -> int:
-    """Poll one watch. Returns the number of notifications sent."""
+    """Poll one watch. Returns the number of notifications sent.
+
+    `already_notified` is shared across the watches in one run: overlapping
+    queries ("navy throw" and "blue throw") routinely return the same listing,
+    and it should reach the phone once, not once per watch.
+    """
+    if already_notified is None:
+        already_notified = set()
+
     raw_items = client.search(watch.params)
     listings = [Listing.from_api(entry) for entry in raw_items]
     matches = [item for item in listings if watch.filters.matches(item)]
 
     store = SeenStore(state_dir, watch.name)
     seeding = reseed or not store.usable
-    fresh = [item for item in matches if store.is_new(item.id)]
+    fresh = [
+        item
+        for item in matches
+        if store.is_new(item.id) and item.id not in already_notified
+    ]
     # Vinted returns its results in no useful order, but ids are chronological.
     fresh.sort(key=lambda item: item.id, reverse=True)
 
@@ -61,10 +74,17 @@ def run_watch(
                 len(fresh),
                 len(batch),
             )
-        # Oldest first, so the newest listing lands on top of the phone's list.
-        for item in reversed(batch):
-            notifier.send(watch.name, item)
-            sent += 1
+        already_notified.update(item.id for item in batch)
+        if watch.digest and len(batch) > 1:
+            # A single listing keeps the richer format -- photo and
+            # tap-to-open are worth more than consistency here.
+            notifier.send_digest(watch.name, batch)
+            sent = len(batch)
+        else:
+            # Oldest first, so the newest listing lands on top of the phone's list.
+            for item in reversed(batch):
+                notifier.send(watch.name, item)
+                sent += 1
 
     if not dry_run:
         # The mark covers every id returned, including filtered-out ones: it
@@ -77,19 +97,29 @@ def run_watch(
     return sent
 
 
-def send_test(watch: Watch, client, notifier: Notifier, count: int) -> int:
+def send_test(
+    watch: Watch,
+    client: VintedClient,
+    notifier: Notifier,
+    count: int,
+    already_notified: set[int] | None = None,
+) -> int:
     """Notify about the newest current matches, ignoring state entirely.
 
     Exists so "did my ntfy setup actually work" can be answered without
     waiting for a genuinely new listing or hand-editing a state file.
     """
+    if already_notified is None:
+        already_notified = set()
+
     matches = [
         item
         for item in (Listing.from_api(entry) for entry in client.search(watch.params))
-        if watch.filters.matches(item)
+        if watch.filters.matches(item) and item.id not in already_notified
     ]
     matches.sort(key=lambda item: item.id, reverse=True)
     batch = matches[:count]
+    already_notified.update(item.id for item in batch)
 
     log.info("%s: sending %d test notification(s)", watch.name, len(batch))
     for item in reversed(batch):
@@ -162,10 +192,11 @@ def main(argv: list[str] | None = None) -> int:
 
     sent = 0
     failed = 0
+    notified: set[int] = set()
     for watch in selected:
         try:
             if args.send_test is not None:
-                sent += send_test(watch, client, notifier, args.send_test)
+                sent += send_test(watch, client, notifier, args.send_test, notified)
                 continue
             sent += run_watch(
                 watch,
@@ -175,6 +206,7 @@ def main(argv: list[str] | None = None) -> int:
                 config.max_notifications,
                 args.dry_run,
                 args.reseed,
+                notified,
             )
         except VintedError as exc:
             log.error("%s: %s", watch.name, exc)

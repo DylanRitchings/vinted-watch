@@ -39,6 +39,7 @@ class Watch:
     params: dict[str, Any]
     filters: Filters
     enabled: bool = True
+    digest: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -64,12 +65,12 @@ class Config:
             max_notifications=int(_get(raw, "maxNotificationsPerRun", 10)),
             notifier=_get(raw, "notifier", {"type": "stdout"}),
             watches=tuple(
-                _parse_watch(name, spec) for name, spec in sorted(watches.items())
+                _parse_watch(name, spec, raw) for name, spec in sorted(watches.items())
             ),
         )
 
 
-def _parse_watch(name: str, spec: dict[str, Any]) -> Watch:
+def _parse_watch(name: str, spec: dict[str, Any], root: dict[str, Any]) -> Watch:
     # Price bounds are sent to Vinted *and* re-checked locally: the API filters
     # on item price, but we usually care about the fee-inclusive total.
     params: dict[str, Any] = {
@@ -86,23 +87,46 @@ def _parse_watch(name: str, spec: dict[str, Any]) -> Watch:
     }
     params.update(_get(spec, "extraParams", {}) or {})
 
+    title_all = _strings(_get(spec, "titleAll"))
+    if _get(spec, "requireQueryInTitle", True):
+        title_all += _query_words(params["search_text"])
+
     filters = Filters(
         min_price=_maybe_float(_get(spec, "minPrice")),
         max_price=_maybe_float(_get(spec, "maxPrice")),
         price_includes_fees=bool(_get(spec, "priceIncludesFees", True)),
+        title_all=title_all,
         title_include=_strings(_get(spec, "titleInclude")),
         title_exclude=_strings(_get(spec, "titleExclude")),
         brands=_strings(_get(spec, "brands")),
         sizes=_strings(_get(spec, "sizes")),
         conditions=_strings(_get(spec, "conditions")),
+        # Blocklists merge: a global entry applies everywhere, a per-watch one
+        # adds to it.
+        ignore_ids=frozenset(
+            int(i)
+            for i in (_get(root, "ignoreIds", []) or []) + (_get(spec, "ignoreIds", []) or [])
+        ),
+        ignore_sellers=_strings(_get(root, "ignoreSellers")) + _strings(_get(spec, "ignoreSellers")),
     )
     return Watch(
         name=name,
         params=params,
         filters=filters,
         enabled=bool(_get(spec, "enable", True)),
+        digest=bool(_get(spec, "digest", False)),
     )
 
 
 def _maybe_float(value: Any) -> float | None:
     return None if value is None else float(value)
+
+
+def _query_words(query: str) -> tuple[str, ...]:
+    """Words a listing's title must contain to count as a match.
+
+    Vinted treats a multi-word search as "any of these", which for a query
+    like "herringbone navy blanket" returns mostly plain blankets. Requiring
+    every word back is what the search looked like it was asking for.
+    """
+    return tuple(word for word in str(query).split() if len(word) > 1)

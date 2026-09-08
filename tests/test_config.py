@@ -122,6 +122,43 @@ def test_watch_name_is_the_default_search_text(tmp_path):
     assert config.watches[0].params["search_text"] == "olympus mju ii"
 
 
+def test_query_words_are_required_in_the_title_by_default(tmp_path):
+    config = load(tmp_path, {"watches": {"herringbone navy blanket": {}}})
+    assert config.watches[0].filters.title_all == ("herringbone", "navy", "blanket")
+
+
+def test_require_query_in_title_can_be_turned_off(tmp_path):
+    config = load(
+        tmp_path,
+        {"watches": {"herringbone navy blanket": {"requireQueryInTitle": False}}},
+    )
+    assert config.watches[0].filters.title_all == ()
+
+
+def test_title_all_adds_to_the_query_words(tmp_path):
+    config = load(tmp_path, {"watches": {"navy throw": {"titleAll": ["wool"]}}})
+    assert config.watches[0].filters.title_all == ("wool", "navy", "throw")
+
+
+def test_blocklists_merge_global_and_per_watch(tmp_path):
+    config = load(
+        tmp_path,
+        {
+            "ignoreIds": [1],
+            "ignoreSellers": ["global_shop"],
+            "watches": {"x": {"ignoreIds": [2], "ignoreSellers": ["local_shop"]}},
+        },
+    )
+    filters = config.watches[0].filters
+    assert filters.ignore_ids == frozenset({1, 2})
+    assert filters.ignore_sellers == ("global_shop", "local_shop")
+
+
+def test_digest_is_off_unless_asked_for(tmp_path):
+    config = load(tmp_path, {"watches": {"a": {}, "b": {"digest": True}}})
+    assert [w.digest for w in config.watches] == [False, True]
+
+
 def test_watches_may_be_a_list(tmp_path):
     config = load(tmp_path, {"watches": [{"name": "x", "query": "q"}]})
     assert config.watches[0].name == "x"

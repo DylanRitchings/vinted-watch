@@ -12,6 +12,7 @@ class Listing:
     title: str
     url: str
     brand: str
+    seller: str
     size: str
     condition: str
     price: float | None
@@ -32,6 +33,7 @@ class Listing:
             title=str(raw.get("title") or "").strip(),
             url=str(raw.get("url") or ""),
             brand=str(raw.get("brand_title") or ""),
+            seller=str((raw.get("user") or {}).get("login") or ""),
             size=str(raw.get("size_title") or ""),
             condition=str(raw.get("status") or ""),
             price=_as_float(price.get("amount")),
@@ -64,13 +66,21 @@ class Filters:
     min_price: float | None = None
     max_price: float | None = None
     price_includes_fees: bool = True
+    title_all: tuple[str, ...] = ()
     title_include: tuple[str, ...] = ()
     title_exclude: tuple[str, ...] = ()
     brands: tuple[str, ...] = ()
     sizes: tuple[str, ...] = ()
     conditions: tuple[str, ...] = ()
+    ignore_ids: frozenset[int] = frozenset()
+    ignore_sellers: tuple[str, ...] = ()
 
     def matches(self, item: Listing) -> bool:
+        if item.id in self.ignore_ids:
+            return False
+        if any(seller.casefold() == item.seller.casefold() for seller in self.ignore_sellers):
+            return False
+
         price = item.buyer_price if self.price_includes_fees else item.price
         if self.min_price is not None and (price is None or price < self.min_price):
             return False
@@ -78,6 +88,8 @@ class Filters:
             return False
 
         haystack = f"{item.title} {item.brand}".casefold()
+        if not all(term.casefold() in haystack for term in self.title_all):
+            return False
         if self.title_include and not any(
             term.casefold() in haystack for term in self.title_include
         ):

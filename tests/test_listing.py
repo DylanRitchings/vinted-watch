@@ -10,6 +10,7 @@ RAW = {
     "price": {"amount": "29.94", "currency_code": "GBP"},
     "total_item_price": {"amount": "32.64", "currency_code": "GBP"},
     "photos": [{"url": "https://images1.vinted.net/a.jpeg"}],
+    "user": {"login": "seller_one"},
 }
 
 
@@ -22,6 +23,7 @@ def test_from_api_normalises_fields():
     assert item.id == 9900047846
     assert item.brand == "Carhartt"
     assert item.size == "M"
+    assert item.seller == "seller_one"
     assert item.price == 29.94
     assert item.total_price == 32.64
     assert item.buyer_price == 32.64
@@ -58,6 +60,32 @@ def test_title_include_matches_brand_too():
 
 def test_title_exclude_is_case_insensitive():
     assert not Filters(title_exclude=["DETROIT"]).matches(make())
+
+
+def test_title_all_requires_every_term():
+    assert Filters(title_all=("carhartt", "detroit")).matches(make())
+    assert not Filters(title_all=("carhartt", "navy")).matches(make())
+
+
+def test_title_all_matches_across_title_and_brand():
+    item = make(title="Detroit Jacket", brand_title="Carhartt")
+    assert Filters(title_all=("carhartt", "detroit")).matches(item)
+
+
+def test_ignored_ids_never_match():
+    assert not Filters(ignore_ids=frozenset({RAW["id"]})).matches(make())
+    assert Filters(ignore_ids=frozenset({1})).matches(make())
+
+
+def test_ignored_sellers_never_match():
+    item = make(user={"login": "BulkShop123"})
+    assert not Filters(ignore_sellers=("bulkshop123",)).matches(item)
+    assert Filters(ignore_sellers=("someone_else",)).matches(item)
+
+
+def test_a_blank_seller_is_not_blocked_by_a_blank_entry():
+    """A listing with no seller must not be caught by an empty blocklist entry."""
+    assert Filters(ignore_sellers=()).matches(make())
 
 
 def test_empty_allowlists_do_not_constrain():

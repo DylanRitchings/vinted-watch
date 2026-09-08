@@ -16,9 +16,13 @@ class FakeClient:
 class FakeNotifier:
     def __init__(self):
         self.sent = []
+        self.digests = []
 
     def send(self, watch, item):
         self.sent.append(item)
+
+    def send_digest(self, watch, items):
+        self.digests.append(items)
 
 
 def item(item_id, title="Jacket", amount="20.00"):
@@ -34,13 +38,23 @@ def item(item_id, title="Jacket", amount="20.00"):
     }
 
 
-def watch(**filters):
-    return Watch(name="jackets", params={}, filters=Filters(**filters))
+def watch(digest=False, **filters):
+    return Watch(name="jackets", params={}, filters=Filters(**filters), digest=digest)
 
 
-def run(items, tmp_path, notifier, *, filters=None, cap=10, dry_run=False, reseed=False):
+def run(
+    items,
+    tmp_path,
+    notifier,
+    *,
+    filters=None,
+    cap=10,
+    dry_run=False,
+    reseed=False,
+    digest=False,
+):
     return run_watch(
-        watch(**(filters or {})),
+        watch(digest=digest, **(filters or {})),
         FakeClient(items),
         notifier,
         tmp_path,
@@ -169,6 +183,76 @@ def test_dry_run_leaves_no_state_behind(tmp_path):
     notifier = FakeNotifier()
     run([item(1)], tmp_path, notifier, dry_run=True)
     assert list(tmp_path.iterdir()) == []
+
+
+def test_digest_bundles_several_listings_into_one_notification(tmp_path):
+    notifier = FakeNotifier()
+    run([item(100)], tmp_path, notifier, digest=True)
+
+    assert run([item(300), item(200), item(100)], tmp_path, notifier, digest=True) == 2
+    assert notifier.sent == []
+    assert [i.id for i in notifier.digests[0]] == [300, 200]
+
+
+def test_digest_keeps_the_richer_format_for_a_lone_listing(tmp_path):
+    notifier = FakeNotifier()
+    run([item(100)], tmp_path, notifier, digest=True)
+
+    run([item(200), item(100)], tmp_path, notifier, digest=True)
+    assert notifier.digests == []
+    assert [i.id for i in notifier.sent] == [200]
+
+
+def test_digest_respects_the_cap(tmp_path):
+    notifier = FakeNotifier()
+    run([item(10)], tmp_path, notifier, digest=True)
+
+    run([item(50), item(40), item(30), item(20)], tmp_path, notifier, cap=2, digest=True)
+    assert [i.id for i in notifier.digests[0]] == [50, 40]
+
+
+def test_ignored_listings_are_never_notified(tmp_path):
+    notifier = FakeNotifier()
+    filters = {"ignore_ids": frozenset({200})}
+    run([item(100)], tmp_path, notifier, filters=filters)
+
+    run([item(200), item(100)], tmp_path, notifier, filters=filters)
+    assert notifier.sent == []
+
+
+def test_overlapping_watches_notify_once_per_run(tmp_path):
+    """"navy throw" and "blue throw" return the same listing; it should not
+    reach the phone twice."""
+    notifier = FakeNotifier()
+    shared = set()
+    seed = [item(100)]
+    for name in ("navy", "blue"):
+        run_watch(
+            Watch(name=name, params={}, filters=Filters()),
+            FakeClient(seed),
+            notifier,
+            tmp_path,
+            10,
+            False,
+            False,
+            shared,
+        )
+
+    sent = 0
+    for name in ("navy", "blue"):
+        sent += run_watch(
+            Watch(name=name, params={}, filters=Filters()),
+            FakeClient([item(200), item(100)]),
+            notifier,
+            tmp_path,
+            10,
+            False,
+            False,
+            shared,
+        )
+
+    assert sent == 1
+    assert [i.id for i in notifier.sent] == [200]
 
 
 def test_send_test_sends_the_newest_regardless_of_state(tmp_path):

@@ -70,12 +70,52 @@ poll interval sane (minutes, not seconds).
 | `perPage` | `96` | Vinted's maximum. A bigger sample means new listings are caught sooner. |
 | `maxNotificationsPerRun` | `10` | Excess listings are recorded as seen, so no backlog builds up. |
 | `priceIncludesFees` | `true` | Compare bounds against the fee-inclusive checkout total. |
+| `requireQueryInTitle` | `true` | Every word of the query must appear in the title or brand. |
+| `digest` | `false` | Bundle a poll's new listings into one notification. |
 | `ntfy.tokenFile` | `null` | Passed via systemd credentials; never enters the Nix store. |
 | `extraParams` | `{}` | Raw catalog query params — copy numeric IDs out of a filtered search URL. |
 
 `brands`, `sizes` and `conditions` are exact-match allowlists against Vinted's
 own labels; `titleInclude` / `titleExclude` are case-insensitive substring
 matches against the title and brand.
+
+### Vinted's search is an OR, so this ANDs it back
+
+Vinted treats "herringbone navy blanket" as *any* of those words, so most of
+what comes back is plain blankets — measured at about one result in ten
+actually containing all three. `requireQueryInTitle` (**on by default**)
+requires every word of the query to appear in the title or brand, which on a
+real query cut 96 results down to 4 genuine matches. Turn it off to see
+everything Vinted considers related, or add `titleAll` for extra required
+words.
+
+### Not hearing about the same thing twice
+
+Overlapping watches ("herringbone navy throw" and "herringbone blue throw")
+routinely return the same listing. Within a single poll, a listing notifies
+once no matter how many watches match it.
+
+### Ignoring things
+
+`ignoreIds` and `ignoreSellers` exist both globally and per-watch, and merge:
+
+```nix
+services.vinted-watch = {
+  ignoreSellers = [ "bulkshop123" ];      # applies to every watch
+  watches."carhartt jacket".ignoreIds = [ 9929551660 ];
+};
+```
+
+Every notification carries the seller's username, so blocklisting a shop that
+floods your results is a copy-paste. The listing id is the number in its URL.
+
+### Digest notifications
+
+With `digest = true`, a poll that turns up several new matches sends one
+notification listing them all rather than one each. A lone listing still gets
+the per-listing format, which carries the photo and opens the listing when
+tapped — ntfy allows only one click target per message, so a digest puts the
+URLs inline instead.
 
 ## How new listings are identified
 
