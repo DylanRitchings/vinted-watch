@@ -1,25 +1,17 @@
 """Per-watch record of what has already been notified about.
 
-One JSON file per watch under the state dir. Writes are atomic (temp file +
-rename) so a killed run cannot leave a truncated file that would re-notify the
-entire search on the next tick.
-
-Two things are tracked, because a seen-set alone is not enough:
-
-* **seen** — ids already notified about.
-* **high water** — the largest listing id ever *observed*, matching or not.
-
-Vinted's catalog endpoint ignores the `order` parameter and answers each
-request with a different sample of the (fuzzily matched) result pool, so two
-polls seconds apart share only about half their ids. A seen-set treats every
-unsampled-until-now listing as new, which means a permanent trickle of
-notifications about listings that are often months old. Vinted ids are
-allocated in ascending order, so anything genuinely new is above the high water
-mark and everything churning below it can be ignored.
+Tracks a seen-set *and* a high water mark (the largest listing id ever
+observed), because a seen-set alone does not work here: Vinted answers each
+request with a different sample of the matched pool, so two polls seconds apart
+share only about half their ids and every unsampled-until-now listing looks
+new. Ids are allocated in ascending order, so the mark separates genuinely new
+listings from the churn below it. See the README for the measurements.
 
 The mark only advances when a larger id is actually observed, so a new listing
-that the sample misses stays notifiable across later polls rather than being
-lost.
+that one sample misses stays notifiable on later polls.
+
+Writes are atomic (temp file + rename); a killed run cannot leave a truncated
+file that would re-notify the entire search.
 """
 
 from __future__ import annotations
@@ -50,9 +42,8 @@ class SeenStore:
         self.max_entries = max_entries
         self._seen: dict[str, float] = {}
         self._high_water = 0
-        # `usable` is False for a first run, a corrupt file, or a file written
-        # before the high water mark existed. In all three cases the caller
-        # seeds instead of notifying.
+        # False for a first run, a corrupt file, or a pre-high-water file —
+        # the caller seeds instead of notifying in all three cases.
         self.usable = False
         if self.path.exists():
             self.usable = self._load()
@@ -61,8 +52,6 @@ class SeenStore:
         try:
             data = json.loads(self.path.read_text())
         except (OSError, json.JSONDecodeError) as exc:
-            # Treat a corrupt file as "no history" rather than crashing; the
-            # run below re-seeds it instead of notifying about everything.
             log.warning("unreadable state file %s (%s), reseeding", self.path, exc)
             return False
 
@@ -72,9 +61,8 @@ class SeenStore:
 
         high_water = data.get("high_water")
         if not isinstance(high_water, int) or high_water <= 0:
-            # A v1 file has no mark. Adopting one from this poll's sample and
-            # notifying in the same run would fire off the whole churn backlog,
-            # so treat the file as needing a reseed.
+            # Adopting a mark from this poll's sample and notifying in the same
+            # run would fire the whole churn backlog, so a v1 file reseeds.
             log.info("%s predates the high water mark, reseeding", self.path)
             return False
 

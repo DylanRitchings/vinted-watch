@@ -56,7 +56,6 @@ class NtfyNotifier:
             "Title": _header_safe(f"{watch}: {title}"),
             "Priority": self.priority,
             "Tags": self.tags,
-            # Tapping the notification opens the listing directly.
             "Click": item.url,
             "Content-Type": "text/plain; charset=utf-8",
         }
@@ -75,8 +74,9 @@ class NtfyNotifier:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
                 response.read()
         except (urllib.error.URLError, TimeoutError) as exc:
-            # A dead notifier must not abort the run -- the item is still
-            # recorded as seen, matching the "only alert once" contract.
+            # Swallowed deliberately: the caller still records the listing, so
+            # a dead ntfy costs this one alert rather than replaying the whole
+            # backlog once it comes back.
             log.error("ntfy delivery failed for item %s: %s", item.id, exc)
 
 

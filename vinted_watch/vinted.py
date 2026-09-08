@@ -52,8 +52,6 @@ class VintedClient:
         self.retries = retries
         self._opener: urllib.request.OpenerDirector | None = None
 
-    # -- session ---------------------------------------------------------
-
     def _new_opener(self) -> urllib.request.OpenerDirector:
         jar = http.cookiejar.CookieJar()
         opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
@@ -69,8 +67,6 @@ class VintedClient:
         if self._opener is None:
             return self._new_opener()
         return self._opener
-
-    # -- transport -------------------------------------------------------
 
     def _get(self, url: str, accept_json: bool = True) -> bytes:
         headers = {
@@ -120,8 +116,6 @@ class VintedClient:
                 time.sleep(2**attempt)
 
         raise VintedError(f"giving up on {url} after {self.retries} attempts: {last}")
-
-    # -- api -------------------------------------------------------------
 
     def search(self, params: dict[str, Any]) -> list[dict[str, Any]]:
         """Return raw catalog items for a search, newest first."""

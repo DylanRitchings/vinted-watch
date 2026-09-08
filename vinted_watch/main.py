@@ -36,10 +36,10 @@ def run_watch(
     matches = [item for item in listings if watch.filters.matches(item)]
 
     store = SeenStore(state_dir, watch.name)
-    # First ever run (or an explicit reseed) records the current results
-    # silently. Without this, enabling a watch dumps 40 notifications at once.
     seeding = reseed or not store.usable
     fresh = [item for item in matches if store.is_new(item.id)]
+    # Vinted returns its results in no useful order, but ids are chronological.
+    fresh.sort(key=lambda item: item.id, reverse=True)
 
     log.info(
         "%s: %d results, %d match filters, %d above id %d%s",
@@ -53,8 +53,6 @@ def run_watch(
 
     sent = 0
     if not seeding and fresh:
-        # The API returns newest first; send oldest first so the newest
-        # listing ends up on top of the notification list.
         batch = fresh[:max_notifications]
         if len(fresh) > len(batch):
             log.warning(
@@ -63,17 +61,16 @@ def run_watch(
                 len(fresh),
                 len(batch),
             )
+        # Oldest first, so the newest listing lands on top of the phone's list.
         for item in reversed(batch):
             notifier.send(watch.name, item)
             sent += 1
 
     if not dry_run:
-        # The high water mark tracks every id the search returned, matching or
-        # not: it is a statement about time, and ids are handed out in order.
+        # The mark covers every id returned, including filtered-out ones: it
+        # records how far through Vinted's ids this watch has looked, not what
+        # it liked.
         store.observe(item.id for item in listings)
-        # Only matching items are recorded as notified. Anything filtered out
-        # stays unrecorded on purpose, so a later price drop still alerts --
-        # provided the listing is still above the mark.
         store.record(item.id for item in matches)
         store.save()
 
@@ -146,7 +143,6 @@ def main(argv: list[str] | None = None) -> int:
                 args.reseed,
             )
         except VintedError as exc:
-            # One broken query should not stop the others.
             log.error("%s: %s", watch.name, exc)
             failed += 1
 

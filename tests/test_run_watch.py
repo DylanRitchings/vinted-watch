@@ -80,6 +80,15 @@ def test_notifications_are_sent_oldest_first(tmp_path):
     assert [i.id for i in notifier.sent] == [2, 3]
 
 
+def test_the_cap_keeps_the_newest_despite_scrambled_api_order(tmp_path):
+    """Vinted returns results in no useful order, so the cap must sort by id."""
+    notifier = FakeNotifier()
+    run([item(10)], tmp_path, notifier)
+
+    run([item(30), item(50), item(20), item(40)], tmp_path, notifier, cap=2)
+    assert [i.id for i in notifier.sent] == [40, 50]
+
+
 def test_cap_limits_notifications_but_still_records_them(tmp_path):
     notifier = FakeNotifier()
     run([item(1)], tmp_path, notifier)

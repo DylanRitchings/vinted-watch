@@ -73,8 +73,6 @@ def _parse_watch(name: str, spec: dict[str, Any]) -> Watch:
     # Price bounds are sent to Vinted *and* re-checked locally: the API filters
     # on item price, but we usually care about the fee-inclusive total.
     params: dict[str, Any] = {
-        # The watch name doubles as the search text, so a config that omits
-        # `query` still searches for something rather than the whole catalogue.
         "search_text": _get(spec, "query") or name,
         "order": _get(spec, "order", "newest_first"),
         "per_page": _get(spec, "perPage", 96),

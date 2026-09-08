@@ -20,7 +20,6 @@
           src = ./.;
 
           build-system = [ python.pkgs.setuptools ];
-          # Stdlib only on purpose — keeps the systemd closure tiny.
           dependencies = [ ];
           nativeCheckInputs = [ python.pkgs.pytestCheckHook ];
 
@@ -375,7 +374,6 @@
               };
             };
 
-            # `vinted-watch --dry-run` is the fastest way to tune a new query.
             environment.systemPackages = [ cfg.package ];
           };
         };
