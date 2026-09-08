@@ -238,7 +238,7 @@
             stateDir = cfg.stateDir;
             notifier = {
               type = "ntfy";
-              inherit (cfg.ntfy) url topic priority tags;
+              inherit (cfg.ntfy) url topic priority tags controlTopic;
               tokenFile =
                 if cfg.ntfy.tokenFile == null then null else "${credentialDir}/ntfy-token";
             };
@@ -357,6 +357,26 @@
                 description = "Comma-separated ntfy tags (emoji shortcodes).";
               };
 
+              controlTopic = lib.mkOption {
+                type = lib.types.nullOr lib.types.str;
+                default = null;
+                example = "vinted-control";
+                description = ''
+                  Topic used as a back-channel from the notifications. Setting
+                  it puts "Ignore" and "Block seller" buttons on every
+                  notification; tapping one publishes a short command here, and
+                  the next poll folds it into the blocklist.
+
+                  Must not be the same topic as {option}`topic`, or your phone
+                  will show the control commands as alerts. Subscribe to it
+                  only if you want to watch the back-channel.
+
+                  Anyone able to publish to this topic can add blocklist
+                  entries, so use an access token if the ntfy server is not
+                  LAN-only.
+                '';
+              };
+
               tokenFile = lib.mkOption {
                 type = lib.types.nullOr lib.types.path;
                 default = null;
@@ -389,10 +409,20 @@
           };
 
           config = lib.mkIf cfg.enable {
-            assertions = [{
-              assertion = cfg.watches != { };
-              message = "services.vinted-watch.watches is empty — nothing to poll.";
-            }];
+            assertions = [
+              {
+                assertion = cfg.watches != { };
+                message = "services.vinted-watch.watches is empty — nothing to poll.";
+              }
+              {
+                assertion = cfg.ntfy.controlTopic != cfg.ntfy.topic;
+                message = ''
+                  services.vinted-watch.ntfy.controlTopic must differ from
+                  ntfy.topic, or the Ignore/Block buttons will publish their
+                  commands into your notification feed.
+                '';
+              }
+            ];
 
             systemd.services.vinted-watch = {
               description = "Poll Vinted searches for new listings";

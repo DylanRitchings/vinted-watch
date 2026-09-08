@@ -7,12 +7,14 @@ oneshot -- no daemon, no in-process sleep loop.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import logging
 import os
 import sys
 from pathlib import Path
 
 from .config import Config, Watch
+from .control import Blocklist, drain
 from .listing import Listing
 from .notify import Notifier, StdoutNotifier, build as build_notifier
 from .state import SeenStore
@@ -95,6 +97,36 @@ def run_watch(
         store.save()
 
     return sent
+
+
+def apply_blocklist(
+    watches: list[Watch], config: Config, state_dir: Path, dry_run: bool
+) -> list[Watch]:
+    """Fold anything the notification buttons blocked into every watch."""
+    notifier = config.notifier
+    topic = notifier.get("controlTopic") or notifier.get("control_topic")
+    if not topic:
+        return watches
+
+    blocklist = Blocklist(state_dir)
+    if not dry_run:
+        applied = drain(blocklist, notifier["url"], topic)
+        if applied:
+            log.info("applied %d blocklist change(s) from %s", applied, topic)
+    if not blocklist.ids and not blocklist.sellers:
+        return watches
+
+    return [
+        dataclasses.replace(
+            watch,
+            filters=dataclasses.replace(
+                watch.filters,
+                ignore_ids=watch.filters.ignore_ids | frozenset(blocklist.ids),
+                ignore_sellers=watch.filters.ignore_sellers + tuple(blocklist.sellers),
+            ),
+        )
+        for watch in watches
+    ]
 
 
 def send_test(
@@ -186,6 +218,7 @@ def main(argv: list[str] | None = None) -> int:
         for watch in config.watches
         if watch.enabled and (not args.watch or watch.name in args.watch)
     ]
+    selected = apply_blocklist(selected, config, state_dir, args.dry_run)
     if not selected:
         log.warning("no enabled watches to run")
         return 0

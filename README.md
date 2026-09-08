@@ -109,6 +109,32 @@ services.vinted-watch = {
 Every notification carries the seller's username, so blocklisting a shop that
 floods your results is a copy-paste. The listing id is the number in its URL.
 
+#### Ignoring from the notification itself
+
+Set `ntfy.controlTopic` and every notification grows **Ignore** and **Block
+seller** buttons:
+
+```nix
+services.vinted-watch.ntfy = {
+  topic = "vinted";
+  controlTopic = "vinted-control";   # must differ from topic
+};
+```
+
+Tapping one publishes a short command to the control topic; the next poll
+drains it into `blocklist.json` in the state dir and applies it from then on.
+Using ntfy as the back-channel keeps this a oneshot timer job — no daemon, no
+extra port, nothing new for the phone to reach. The trade-off is latency: a tap
+takes effect on the next poll, not instantly.
+
+Blocklist entries made this way are runtime state, not config. To make one
+permanent, move it into `ignoreIds` / `ignoreSellers`; to undo one, delete
+`blocklist.json`.
+
+Anyone who can publish to the control topic can add blocklist entries. On a
+LAN-only ntfy that is the same set of people who can already read your
+notifications — put a token on the topic if that isn't true for you.
+
 ### Digest notifications
 
 With `digest = true`, a poll that turns up several new matches sends one

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import json
+import base64
 import logging
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Protocol
@@ -66,8 +67,11 @@ class NtfyNotifier:
         tags: str = "shopping_cart",
         token_file: str | None = None,
         timeout: int = 15,
+        control_topic: str | None = None,
     ) -> None:
-        self.endpoint = f"{url.rstrip('/')}/{topic}"
+        self.base = url.rstrip("/")
+        self.endpoint = f"{self.base}/{topic}"
+        self.control_endpoint = f"{self.base}/{control_topic}" if control_topic else None
         self.priority = priority
         self.tags = tags
         self.timeout = timeout
@@ -78,7 +82,25 @@ class NtfyNotifier:
         headers = {"Click": item.url}
         if item.photo:
             headers["Attach"] = item.photo
+        actions = self._actions(item)
+        if actions:
+            headers["Actions"] = actions
         self._post(f"{watch}: {title}", f"{body}\n{item.url}", headers, item.id)
+
+    def _actions(self, item: Listing) -> str:
+        """ntfy action buttons that publish a command to the control topic."""
+        if not self.control_endpoint:
+            return ""
+        actions = [
+            _http_action("Ignore", self.control_endpoint, "ignore-id", str(item.id))
+        ]
+        if item.seller:
+            actions.append(
+                _http_action(
+                    "Block seller", self.control_endpoint, "ignore-seller", item.seller
+                )
+            )
+        return "; ".join(actions)
 
     def send_digest(self, watch: str, items: list[Listing]) -> None:
         title, body = describe_digest(watch, items)
@@ -108,9 +130,26 @@ class NtfyNotifier:
             log.error("ntfy delivery failed for %s: %s", what, exc)
 
 
+def _http_action(label: str, url: str, verb: str, argument: str) -> str:
+    # ntfy parses actions as comma-separated key=value, so the body is quoted
+    # to protect its space and the argument percent-encoded to keep the whole
+    # header ASCII. clear=true dismisses the notification once tapped.
+    return (
+        f"http, {label}, {url}, method=POST, "
+        f"body='{verb} {urllib.parse.quote(argument)}', clear=true"
+    )
+
+
 def _header_safe(value: str) -> str:
-    """ntfy reads headers as latin-1; strip anything that cannot survive it."""
-    return json.dumps(value, ensure_ascii=True)[1:-1]
+    """Encode a header value ntfy will render correctly.
+
+    ntfy reads headers as latin-1. Passing non-ASCII through unchanged shows
+    up as mojibake or escape sequences, so anything outside ASCII goes as an
+    RFC 2047 encoded word, which ntfy decodes back to UTF-8.
+    """
+    if value.isascii():
+        return value
+    return "=?UTF-8?B?" + base64.b64encode(value.encode()).decode("ascii") + "?="
 
 
 def build(config: dict) -> Notifier:
@@ -124,5 +163,6 @@ def build(config: dict) -> Notifier:
             priority=config.get("priority", "default"),
             tags=config.get("tags", "shopping_cart"),
             token_file=config.get("tokenFile") or config.get("token_file"),
+            control_topic=config.get("controlTopic") or config.get("control_topic"),
         )
     raise ValueError(f"unknown notifier type: {kind!r}")
