@@ -2,7 +2,7 @@ import pytest
 
 from vinted_watch.config import Watch
 from vinted_watch.listing import Filters
-from vinted_watch.main import run_watch
+from vinted_watch.main import run_watch, send_test
 
 
 class FakeClient:
@@ -168,6 +168,28 @@ def test_reseed_records_without_notifying(tmp_path):
 def test_dry_run_leaves_no_state_behind(tmp_path):
     notifier = FakeNotifier()
     run([item(1)], tmp_path, notifier, dry_run=True)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_send_test_sends_the_newest_regardless_of_state(tmp_path):
+    notifier = FakeNotifier()
+    run([item(500)], tmp_path, notifier)  # 500 already seen and above the mark
+
+    assert send_test(watch(), FakeClient([item(100), item(500), item(300)]), notifier, 1) == 1
+    assert [i.id for i in notifier.sent] == [500]
+
+
+def test_send_test_respects_filters_and_count(tmp_path):
+    notifier = FakeNotifier()
+    items = [item(500, amount="99.00"), item(400), item(300), item(200)]
+
+    sent = send_test(watch(max_price=30), FakeClient(items), notifier, 2)
+    assert sent == 2
+    assert [i.id for i in notifier.sent] == [300, 400]
+
+
+def test_send_test_leaves_no_state_behind(tmp_path):
+    send_test(watch(), FakeClient([item(1)]), FakeNotifier(), 1)
     assert list(tmp_path.iterdir()) == []
 
 

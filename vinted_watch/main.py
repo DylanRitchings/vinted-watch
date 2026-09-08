@@ -77,6 +77,26 @@ def run_watch(
     return sent
 
 
+def send_test(watch: Watch, client, notifier: Notifier, count: int) -> int:
+    """Notify about the newest current matches, ignoring state entirely.
+
+    Exists so "did my ntfy setup actually work" can be answered without
+    waiting for a genuinely new listing or hand-editing a state file.
+    """
+    matches = [
+        item
+        for item in (Listing.from_api(entry) for entry in client.search(watch.params))
+        if watch.filters.matches(item)
+    ]
+    matches.sort(key=lambda item: item.id, reverse=True)
+    batch = matches[:count]
+
+    log.info("%s: sending %d test notification(s)", watch.name, len(batch))
+    for item in reversed(batch):
+        notifier.send(watch.name, item)
+    return len(batch)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="vinted-watch", description=__doc__)
     parser.add_argument(
@@ -100,6 +120,17 @@ def main(argv: list[str] | None = None) -> int:
         "--reseed",
         action="store_true",
         help="record current results without notifying, then exit",
+    )
+    parser.add_argument(
+        "--send-test",
+        type=int,
+        nargs="?",
+        const=1,
+        metavar="N",
+        help=(
+            "notify about the N newest current matches (default 1) to prove the "
+            "notifier works, ignoring and preserving state"
+        ),
     )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
@@ -133,6 +164,9 @@ def main(argv: list[str] | None = None) -> int:
     failed = 0
     for watch in selected:
         try:
+            if args.send_test is not None:
+                sent += send_test(watch, client, notifier, args.send_test)
+                continue
             sent += run_watch(
                 watch,
                 client,

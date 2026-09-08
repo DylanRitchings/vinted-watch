@@ -115,6 +115,20 @@ filters without burning through notifications. `--watch NAME` restricts the run
 to one search, and `--reseed` re-records the current results silently (use it
 after widening a query that would otherwise fire a burst).
 
+## Checking notifications actually arrive
+
+A watch that is working correctly is silent, which is indistinguishable from a
+watch that is broken. `--send-test` notifies about the newest current matches
+through the real notifier, ignoring and preserving state:
+
+```console
+$ vinted-watch --config "$CFG" --watch "carhartt jacket" --send-test
+```
+
+One notification, straight to your phone. `--send-test N` sends the newest N.
+If nothing arrives, check the topic your client is subscribed to matches
+`ntfy.topic` before looking anywhere else.
+
 ## Standalone usage
 
 ```console
