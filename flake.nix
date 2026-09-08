@@ -15,7 +15,7 @@
         packages.default = python.pkgs.buildPythonApplication {
           pname = "vinted-watch";
           # Bumped by .github/scripts/bump_version.py on merge to main.
-          version = "0.3.0";
+          version = "0.4.0";
           pyproject = true;
           src = ./.;
 
