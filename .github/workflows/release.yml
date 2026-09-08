@@ -1,0 +1,62 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Serialise releases so two quick merges cannot race for the same tag.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: tag and release
+    runs-on: ubuntu-latest
+    # The release job pushes its own version-bump commit; do not react to it.
+    if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Tags and full history are needed to work out the bump level.
+          fetch-depth: 0
+
+      - name: Work out the next version
+        id: bump
+        run: python3 .github/scripts/bump_version.py
+
+      - name: Commit, tag and push
+        if: steps.bump.outputs.released == 'true'
+        env:
+          TAG: ${{ steps.bump.outputs.tag }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # An initial release has nothing to rewrite, so allow an empty diff.
+          git commit -am "chore(release): $VERSION" || echo "no version files changed"
+          git tag -a "$TAG" -m "$VERSION"
+          git push origin HEAD:main --follow-tags
+
+      - name: Publish the GitHub release
+        if: steps.bump.outputs.released == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.bump.outputs.tag }}
+          BUMP: ${{ steps.bump.outputs.bump }}
+        run: |
+          set -euo pipefail
+          # Notes cover everything since the previous tag; on the first
+          # release there is no previous tag, so let gh pick the range.
+          previous=$(git tag --list 'v*' --sort=-v:refname | sed -n 2p)
+          args=(--title "$TAG" --generate-notes --latest)
+          if [ -n "$previous" ]; then
+            args+=(--notes-start-tag "$previous")
+          fi
+          gh release create "$TAG" "${args[@]}"
+          echo "released $TAG ($BUMP bump)" >> "$GITHUB_STEP_SUMMARY"

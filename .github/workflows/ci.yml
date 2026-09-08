@@ -1,0 +1,46 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: nix flake check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      # Builds the package, which runs the pytest suite in the sandbox.
+      - run: nix flake check -L
+
+      - name: NixOS module evaluates
+        run: |
+          nix eval --impure --raw --expr '
+            let
+              flake = builtins.getFlake (toString ./.);
+              sys = flake.inputs.nixpkgs.lib.nixosSystem {
+                system = "x86_64-linux";
+                modules = [
+                  flake.nixosModules.default
+                  {
+                    boot.loader.grub.devices = [ "/dev/sda" ];
+                    fileSystems."/" = { device = "/dev/sda1"; fsType = "ext4"; };
+                    system.stateVersion = "25.11";
+                    services.vinted-watch = {
+                      enable = true;
+                      ntfy.url = "http://ntfy.example";
+                      watches."carhartt jacket".maxPrice = 60;
+                    };
+                  }
+                ];
+              };
+            in sys.config.systemd.services.vinted-watch.serviceConfig.ExecStart
+          '
