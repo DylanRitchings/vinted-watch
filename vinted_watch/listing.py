@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 import dataclasses
+import re
 from typing import Any
+
+# Brand, size and condition are not their own fields in the page payload --
+# they only appear in the grid tile's accessibility label, as
+# "<title>, Brand: X, Condition: Y, Size: Z, 10.00 £, 11.20 £".
+_LABELLED = re.compile(r"\b(Brand|Condition|Size): ([^,]+)")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -23,8 +29,9 @@ class Listing:
     @classmethod
     def from_api(cls, raw: dict[str, Any]) -> "Listing":
         price = raw.get("price") or {}
-        total = raw.get("total_item_price") or {}
-        photo = (raw.get("photo") or {}).get("url")
+        total = raw.get("totalItemPrice") or {}
+        labels = _labels((raw.get("itemBox") or {}).get("accessibilityLabel") or "")
+        photo = raw.get("thumbnailUrl")
         if not photo:
             photos = raw.get("photos") or []
             photo = photos[0].get("url") if photos else None
@@ -32,13 +39,15 @@ class Listing:
             id=int(raw["id"]),
             title=str(raw.get("title") or "").strip(),
             url=str(raw.get("url") or ""),
-            brand=str(raw.get("brand_title") or ""),
-            seller=str((raw.get("user") or {}).get("login") or ""),
-            size=str(raw.get("size_title") or ""),
-            condition=str(raw.get("status") or ""),
+            brand=labels.get("Brand", ""),
+            # The payload identifies a seller by id only -- no username -- so
+            # that is what blocklists match on.
+            seller=str((raw.get("user") or {}).get("id") or ""),
+            size=labels.get("Size", ""),
+            condition=labels.get("Condition", ""),
             price=_as_float(price.get("amount")),
             total_price=_as_float(total.get("amount")),
-            currency=str(price.get("currency_code") or total.get("currency_code") or ""),
+            currency=str(price.get("currencyCode") or total.get("currencyCode") or ""),
             photo=photo,
         )
 
@@ -50,6 +59,10 @@ class Listing:
         more at checkout, so max_price compares against this by default.
         """
         return self.total_price if self.total_price is not None else self.price
+
+
+def _labels(text: str) -> dict[str, str]:
+    return {match[1]: match[2].strip() for match in _LABELLED.finditer(text)}
 
 
 def _as_float(value: Any) -> float | None:

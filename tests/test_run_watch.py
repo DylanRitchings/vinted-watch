@@ -30,11 +30,14 @@ def item(item_id, title="Jacket", amount="20.00"):
         "id": item_id,
         "title": title,
         "url": f"https://www.vinted.co.uk/items/{item_id}",
-        "brand_title": "Carhartt",
-        "size_title": "M",
-        "status": "Very good",
-        "price": {"amount": amount, "currency_code": "GBP"},
-        "total_item_price": {"amount": amount, "currency_code": "GBP"},
+        "itemBox": {
+            "accessibilityLabel": (
+                f"{title}, Brand: Carhartt, Condition: Very good, Size: M, "
+                f"{amount} £, {amount} £"
+            )
+        },
+        "price": {"amount": amount, "currencyCode": "GBP"},
+        "totalItemPrice": {"amount": amount, "currencyCode": "GBP"},
     }
 
 

@@ -1,16 +1,24 @@
 from vinted_watch.listing import Filters, Listing
 
+
+def label(title="Carhartt Detroit Jacket", brand="Carhartt", size="M"):
+    return {
+        "accessibilityLabel": (
+            f"{title}, Brand: {brand}, Condition: Very good, Size: {size}, "
+            "29.94 £, 32.64 £"
+        )
+    }
+
+
 RAW = {
     "id": 9900047846,
     "title": "Carhartt Detroit Jacket",
     "url": "https://www.vinted.co.uk/items/9900047846-carhartt",
-    "brand_title": "Carhartt",
-    "size_title": "M",
-    "status": "Very good",
-    "price": {"amount": "29.94", "currency_code": "GBP"},
-    "total_item_price": {"amount": "32.64", "currency_code": "GBP"},
+    "itemBox": label(),
+    "price": {"amount": "29.94", "currencyCode": "GBP"},
+    "totalItemPrice": {"amount": "32.64", "currencyCode": "GBP"},
     "photos": [{"url": "https://images1.vinted.net/a.jpeg"}],
-    "user": {"login": "seller_one"},
+    "user": {"id": 83654511},
 }
 
 
@@ -23,11 +31,20 @@ def test_from_api_normalises_fields():
     assert item.id == 9900047846
     assert item.brand == "Carhartt"
     assert item.size == "M"
-    assert item.seller == "seller_one"
+    assert item.condition == "Very good"
+    assert item.seller == "83654511"
     assert item.price == 29.94
     assert item.total_price == 32.64
     assert item.buyer_price == 32.64
     assert item.photo == "https://images1.vinted.net/a.jpeg"
+
+
+def test_from_api_reads_an_unbranded_listing():
+    """Only branded listings carry a "Brand:" part, and the label is positional."""
+    item = make(itemBox={"accessibilityLabel": "Crochet blanket, Condition: Good, Size: Other, 10.00 £, 11.20 £"})
+    assert item.brand == ""
+    assert item.condition == "Good"
+    assert item.size == "Other"
 
 
 def test_from_api_tolerates_missing_fields():
@@ -38,9 +55,9 @@ def test_from_api_tolerates_missing_fields():
     assert item.photo is None
 
 
-def test_from_api_prefers_photo_over_photos():
-    item = make(photo={"url": "https://images1.vinted.net/main.jpeg"})
-    assert item.photo == "https://images1.vinted.net/main.jpeg"
+def test_from_api_prefers_the_thumbnail_over_the_photo_list():
+    item = make(thumbnailUrl="https://images1.vinted.net/thumb.jpeg")
+    assert item.photo == "https://images1.vinted.net/thumb.jpeg"
 
 
 def test_max_price_uses_fee_inclusive_total_by_default():
@@ -50,7 +67,7 @@ def test_max_price_uses_fee_inclusive_total_by_default():
 
 
 def test_min_price_rejects_unpriced_listings():
-    assert not Filters(min_price=1).matches(make(price={}, total_item_price={}))
+    assert not Filters(min_price=1).matches(make(price={}, totalItemPrice={}))
 
 
 def test_title_include_matches_brand_too():
@@ -68,7 +85,7 @@ def test_title_all_requires_every_term():
 
 
 def test_title_all_matches_across_title_and_brand():
-    item = make(title="Detroit Jacket", brand_title="Carhartt")
+    item = make(title="Detroit Jacket", itemBox=label(title="Detroit Jacket"))
     assert Filters(title_all=("carhartt", "detroit")).matches(item)
 
 
@@ -78,9 +95,9 @@ def test_ignored_ids_never_match():
 
 
 def test_ignored_sellers_never_match():
-    item = make(user={"login": "BulkShop123"})
-    assert not Filters(ignore_sellers=("bulkshop123",)).matches(item)
-    assert Filters(ignore_sellers=("someone_else",)).matches(item)
+    item = make(user={"id": 12345})
+    assert not Filters(ignore_sellers=("12345",)).matches(item)
+    assert Filters(ignore_sellers=("99999",)).matches(item)
 
 
 def test_a_blank_seller_is_not_blocked_by_a_blank_entry():

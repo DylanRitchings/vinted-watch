@@ -14,15 +14,17 @@ config instead of clicked into a web UI.
 
 ## Why not changedetection.io
 
-Generic page-diff tools have to render Vinted's client-side search grid and get
-past its bot protection, and even then they can only watch a fixed URL for "the
-page changed". `vinted-watch` talks to the same JSON endpoint the web app uses,
-so it gets structured listings — id, price, brand, size, condition, photo — and
-can dedupe per listing rather than per page.
+Generic page-diff tools can only watch a fixed URL for "the page changed".
+`vinted-watch` fetches the same catalog page a browser would and reads the
+structured listings Vinted server-renders into it — id, price, brand, size,
+condition, photo — so it dedupes per listing rather than per page, with no
+headless browser involved.
 
-Vinted has no public API and does not document this endpoint. It can change
-without notice; this is a homelab tool, not a supported integration. Keep the
-poll interval sane (minutes, not seconds).
+Vinted has no public API and documents none of this. It changes without notice:
+the JSON endpoint this tool read until 0.4.x now answers 404 to every query,
+which is why 0.5.0 reads the catalog page instead. Treat it as a homelab tool,
+not a supported integration, and keep the poll interval sane (minutes, not
+seconds).
 
 ## NixOS usage
 
@@ -67,7 +69,7 @@ poll interval sane (minutes, not seconds).
 | Option | Default | Notes |
 | --- | --- | --- |
 | `interval` | `5m` | systemd time span. Below a couple of minutes invites 429s. |
-| `perPage` | `96` | Vinted's maximum. A bigger sample means new listings are caught sooner. |
+| `perPage` | `96` | Ignored since 0.5.0 — the catalog page always returns 96. |
 | `maxNotificationsPerRun` | `10` | Excess listings are recorded as seen, so no backlog builds up. |
 | `priceIncludesFees` | `true` | Compare bounds against the fee-inclusive checkout total. |
 | `requireQueryInTitle` | `true` | Every word of the query must appear in the title or brand. |
@@ -101,13 +103,15 @@ once no matter how many watches match it.
 
 ```nix
 services.vinted-watch = {
-  ignoreSellers = [ "bulkshop123" ];      # applies to every watch
+  ignoreSellers = [ "83654511" ];         # applies to every watch
   watches."carhartt jacket".ignoreIds = [ 9929551660 ];
 };
 ```
 
-Every notification carries the seller's username, so blocklisting a shop that
-floods your results is a copy-paste. The listing id is the number in its URL.
+A seller is a **numeric user id**, not a username: since 0.5.0 the catalog page
+carries no usernames. The **Block seller** button below fills these in for you;
+by hand, the id is the number in a seller's profile URL. The listing id is the
+number in its URL.
 
 #### Ignoring from the notification itself
 
@@ -145,10 +149,10 @@ URLs inline instead.
 
 ## How new listings are identified
 
-Vinted's catalog endpoint ignores the `order` parameter. Every request answers
-with a *different sample* of the fuzzily-matched result pool: two polls seconds
-apart typically share only about half their ids, and paging through does not
-converge on a stable set either. Measured on a real query, a plain seen-set
+`order=newest_first` does not make the catalog deterministic. Every request
+answers with a *different sample* of the fuzzily-matched result pool: two polls
+seconds apart typically share only about half their ids, and paging through does
+not converge on a stable set either. Measured on a real query, a plain seen-set
 treats 14–24 listings per poll as "new", most of them months old.
 
 So a listing counts as new only when its id is **above the highest id ever

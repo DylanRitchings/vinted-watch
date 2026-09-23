@@ -1,4 +1,5 @@
 import base64
+import dataclasses
 
 from vinted_watch.listing import Listing
 from vinted_watch.notify import NtfyNotifier, _header_safe, describe, describe_digest
@@ -7,12 +8,15 @@ RAW = {
     "id": 42,
     "title": "Navy Herringbone Throw",
     "url": "https://www.vinted.co.uk/items/42-navy",
-    "brand_title": "TBCo",
-    "size_title": "One size",
-    "status": "Very good",
-    "price": {"amount": "20.00", "currency_code": "GBP"},
-    "total_item_price": {"amount": "22.20", "currency_code": "GBP"},
-    "user": {"login": "bulkshop"},
+    "itemBox": {
+        "accessibilityLabel": (
+            "Navy Herringbone Throw, Brand: TBCo, Condition: Very good, "
+            "Size: One size, 20.00 £, 22.20 £"
+        )
+    },
+    "price": {"amount": "20.00", "currencyCode": "GBP"},
+    "totalItemPrice": {"amount": "22.20", "currencyCode": "GBP"},
+    "user": {"id": 777},
 }
 
 
@@ -26,9 +30,9 @@ def test_describe_leads_with_the_price_the_buyer_pays():
     assert "item 20.00 + fees" in body
 
 
-def test_describe_names_the_seller_so_it_can_be_blocked():
+def test_describe_lists_brand_size_and_condition():
     _, body = describe(make())
-    assert "by bulkshop" in body
+    assert "TBCo · One size · Very good" in body
 
 
 def test_digest_lists_every_listing_with_its_url():
@@ -50,7 +54,7 @@ def test_action_buttons_target_the_control_topic():
 
     assert actions.count("http://ntfy.example/price-control") == 2
     assert "body='ignore-id 42'" in actions
-    assert "body='ignore-seller bulkshop'" in actions
+    assert "body='ignore-seller 777'" in actions
     assert "clear=true" in actions
 
 
@@ -65,10 +69,11 @@ def test_block_seller_button_is_dropped_when_there_is_no_seller():
 
 
 def test_action_arguments_are_percent_encoded_to_stay_ascii():
+    """Seller ids are ASCII, but blocklists loaded from config need not be."""
     notifier = NtfyNotifier(
         url="http://ntfy.example", topic="price", control_topic="price-control"
     )
-    actions = notifier._actions(make(user={"login": "café shop"}))
+    actions = notifier._actions(dataclasses.replace(make(), seller="café shop"))
 
     assert actions.isascii()  # ntfy reads headers as latin-1
     assert "body='ignore-seller caf%C3%A9%20shop'" in actions

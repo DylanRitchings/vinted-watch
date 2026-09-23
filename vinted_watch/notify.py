@@ -32,8 +32,8 @@ def describe(item: Listing) -> tuple[str, str]:
     details = [part for part in (item.brand, item.size, item.condition) if part]
     if item.price is not None and item.buyer_price is not None and item.price != item.buyer_price:
         details.append(f"item {item.price:.2f} + fees")
-    if item.seller:
-        details.append(f"by {item.seller}")
+    # The seller is a bare numeric id now that Vinted's page payload carries no
+    # username, which reads as noise -- the Block seller button carries it.
     return title, " · ".join(details) or item.url
 
 

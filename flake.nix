@@ -83,11 +83,9 @@
                 type = lib.types.ints.between 1 96;
                 default = 96;
                 description = ''
-                  Results fetched per poll, capped at Vinted's maximum. Vinted
-                  answers each request with a different sample of the matching
-                  pool rather than a stable newest-first page, so a larger
-                  sample is a straight improvement: it raises the chance that a
-                  genuinely new listing is caught on any given poll.
+                  Ignored since 0.5.0: the catalog page always renders Vinted's
+                  maximum of 96 results. Kept so existing configs still
+                  evaluate.
                 '';
               };
 
@@ -188,9 +186,8 @@
                 type = lib.types.listOf lib.types.str;
                 default = [ ];
                 description = ''
-                  Seller usernames never to notify about, on top of the global
-                  {option}`services.vinted-watch.ignoreSellers`. The username
-                  appears in every notification.
+                  Vinted user IDs never to notify about, on top of the global
+                  {option}`services.vinted-watch.ignoreSellers`.
                 '';
               };
 
@@ -324,11 +321,11 @@
             ignoreSellers = lib.mkOption {
               type = lib.types.listOf lib.types.str;
               default = [ ];
-              example = [ "bulkshop123" ];
+              example = [ "83654511" ];
               description = ''
-                Seller usernames never to notify about, across every watch.
-                The username appears in every notification, so blocklisting a
-                shop that floods your results is a copy-paste.
+                Vinted user IDs never to notify about, across every watch. The
+                catalog carries no usernames, so sellers are identified by id;
+                the "Block seller" notification button fills one in for you.
               '';
             };
 
